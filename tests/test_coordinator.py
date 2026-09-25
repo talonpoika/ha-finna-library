@@ -176,3 +176,44 @@ async def test_carried_saved_searches_keep_new_result_counts(hass):
     await coordinator.async_refresh()
 
     assert coordinator.data.saved_searches[0].new_results == 2
+
+
+def _history_client():
+    from pathlib import Path
+
+    history = (Path(__file__).parent / "fixtures" / "history.html").read_text()
+    return _client_with_pages(
+        {
+            "/MyResearch/CheckedOut": EMPTY,
+            "/Holds/List": EMPTY,
+            "/MyResearch/Fines": EMPTY,
+            "/Checkouts/History": history,  # total count 5
+            "/Search/History": EMPTY,
+        }
+    )
+
+
+async def test_unchanged_history_total_reuses_count_after_one_page():
+    client = _history_client()
+    previous = FinnaData(
+        loans_this_year=99, history_total=5, history_year=date.today().year
+    )
+
+    data = await client.async_get_data(previous)
+
+    assert data.loans_this_year == 99
+    assert [p for p in client.calls if p.startswith("/Checkouts/History")] == [
+        "/Checkouts/History?page=1"
+    ]
+
+
+async def test_changed_history_total_recounts():
+    client = _history_client()
+    previous = FinnaData(
+        loans_this_year=99, history_total=4, history_year=date.today().year
+    )
+
+    data = await client.async_get_data(previous)
+
+    assert data.loans_this_year != 99
+    assert data.history_total == 5

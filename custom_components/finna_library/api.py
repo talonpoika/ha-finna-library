@@ -320,11 +320,15 @@ class FinnaClient:
                 raise FinnaAuthError("still logged out after re-login")
         return body
 
-    async def async_count_loans_in_year(self, year: int) -> tuple[int | None, int | None]:
+    async def async_count_loans_in_year(
+        self, year: int, known: tuple[int, int] | None = None
+    ) -> tuple[int | None, int | None]:
         """Count history entries checked out in `year`; returns (count, total).
 
         History is newest-first, so stop as soon as a page only has older
-        entries. Capped at 50 pages as a runaway guard.
+        entries. Capped at 50 pages as a runaway guard. `known` is a
+        (count, total) already counted for `year`: if page 1 shows the same
+        total, the history hasn't changed and it is returned as is (#5).
         """
         count = 0
         total = None
@@ -333,6 +337,8 @@ class FinnaClient:
             entries, total = parse_history_page(
                 await self._get_page(f"/Checkouts/History?page={page}")
             )
+            if page == 1 and known is not None and total == known[1]:
+                return known
             if not entries:
                 break
             first = (entries[0].title, entries[0].checkout_date)
@@ -365,6 +371,11 @@ class FinnaClient:
         carried_count = (
             previous.loans_this_year if previous.history_year == year else None
         )
+        known = (
+            (carried_count, previous.history_total)
+            if carried_count is not None and previous.history_total is not None
+            else None
+        )
         loans, renew_ids, csrf = parse_checked_out(
             await self._get_page("/MyResearch/CheckedOut")
         )
@@ -385,7 +396,7 @@ class FinnaClient:
                 await self._get_page("/MyResearch/Fines")
             )
             data.loans_this_year, data.history_total = (
-                await self.async_count_loans_in_year(year)
+                await self.async_count_loans_in_year(year, known)
             )
             data.history_year = year
             data.saved_searches = await self.async_get_saved_searches()
