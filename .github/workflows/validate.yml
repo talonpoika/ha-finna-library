@@ -33,3 +33,15 @@ jobs:
           python-version: "3.13"
       - run: pip install pytest pytest-homeassistant-custom-component beautifulsoup4 aiohttp
       - run: pytest tests/ -q
+
+  # Oldest supported HA: keep in sync with hacs.json "homeassistant" (#10).
+  tests-min-ha:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # 0.13.132 pins homeassistant==2024.6.0; josepy<2 keeps its acme importable.
+      - run: pip install "pytest-homeassistant-custom-component==0.13.132" "josepy<2" beautifulsoup4
+      - run: pytest tests/ -q

@@ -62,6 +62,8 @@ Device page with all sensors:
 
 ## Installation
 
+Requires Home Assistant 2024.6 or newer (tested in CI against 2024.6.0 and the latest release).
+
 ### HACS (recommended)
 
 1. HACS → Integrations → ⋮ → *Custom repositories*
