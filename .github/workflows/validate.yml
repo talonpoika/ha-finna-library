@@ -7,6 +7,10 @@ on:
     - cron: "0 4 * * 1"
   workflow_dispatch:
 
+# Jobs only read the repo; keep the token read-only (CodeQL).
+permissions:
+  contents: read
+
 jobs:
   hassfest:
     runs-on: ubuntu-latest
