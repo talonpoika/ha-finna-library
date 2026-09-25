@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
@@ -42,9 +43,14 @@ class FinnaCoordinator(DataUpdateCoordinator[FinnaData]):
         self._failures = 0
 
     async def _async_update_data(self) -> FinnaData:
+        start = time.monotonic()
         try:
             data = await self._fetch()
         except UpdateFailed:
+            _LOGGER.debug(
+                "Poll for %s… failed after %.1f s",
+                self.username[:5], time.monotonic() - start,
+            )
             # The coordinator schedules the next poll from update_interval
             # after this returns, so set the retry delay before raising.
             if self._failures < len(RETRY_DELAYS_MINUTES):
@@ -53,7 +59,17 @@ class FinnaCoordinator(DataUpdateCoordinator[FinnaData]):
                 delay = timedelta(hours=UPDATE_INTERVAL_HOURS)
             self._failures += 1
             self.update_interval = delay
+            # HA logs only the first failure; make a lasting outage visible.
+            if self._failures == 2:
+                _LOGGER.warning(
+                    "Finna poll for %s… has failed %d times in a row; "
+                    "sensors stay unavailable until it recovers",
+                    self.username[:5], self._failures,
+                )
             raise
+        _LOGGER.debug(
+            "Poll for %s… took %.1f s", self.username[:5], time.monotonic() - start
+        )
         self._failures = 0
         self.update_interval = timedelta(hours=UPDATE_INTERVAL_HOURS)
         return data

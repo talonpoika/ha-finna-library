@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -306,6 +307,7 @@ class FinnaClient:
         self._timeout = aiohttp.ClientTimeout(total=30)
 
     async def _request(self, method: str, path: str, data=None) -> str:
+        start = time.monotonic()
         try:
             async with self._session.request(
                 method,
@@ -314,11 +316,20 @@ class FinnaClient:
                 headers=self._headers,
                 timeout=self._timeout,
             ) as resp:
+                body = await resp.text()
+                _LOGGER.debug(
+                    "%s %s -> %s in %d ms",
+                    method, path, resp.status, (time.monotonic() - start) * 1000,
+                )
                 resp.raise_for_status()
-                return await resp.text()
+                return body
         except FinnaError:
             raise
         except (aiohttp.ClientError, TimeoutError) as err:
+            _LOGGER.debug(
+                "%s %s failed after %d ms: %r",
+                method, path, (time.monotonic() - start) * 1000, err,
+            )
             raise FinnaConnectionError(f"{method} {path}: {err}") from err
 
     async def _get(self, path: str) -> str:

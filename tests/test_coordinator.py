@@ -217,3 +217,53 @@ async def test_changed_history_total_recounts():
 
     assert data.loans_this_year != 99
     assert data.history_total == 5
+
+
+async def test_consecutive_failures_warn_once(hass, caplog):
+    get_data = AsyncMock(return_value=FinnaData())
+    entry = await _setup(hass, get_data)
+    coordinator = entry.runtime_data
+    coordinator.client.async_get_data = get_data
+    get_data.side_effect = FinnaConnectionError("timeout")
+
+    for _ in range(4):
+        await coordinator.async_refresh()
+
+    warnings = [
+        r for r in caplog.records
+        if r.levelname == "WARNING" and "in a row" in r.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert "HEILI" in warnings[0].getMessage()
+
+
+async def test_request_duration_is_logged_at_debug(caplog):
+    import logging
+
+    class Resp:
+        status = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        def raise_for_status(self):
+            pass
+
+        async def text(self):
+            return "ok"
+
+    class Session:
+        def request(self, *args, **kwargs):
+            return Resp()
+
+    client = FinnaClient(session=Session(), username="u", pin="p")
+    with caplog.at_level(logging.DEBUG, logger="custom_components.finna_library"):
+        await client._get("/Holds/List")  # noqa: SLF001
+
+    assert any(
+        "/Holds/List" in r.getMessage() and "200" in r.getMessage() and "ms" in r.getMessage()
+        for r in caplog.records
+    )
