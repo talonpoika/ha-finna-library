@@ -13,7 +13,7 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import FinnaAuthError, FinnaClient, FinnaData, FinnaError
-from .const import CONF_HOST, CONF_PIN, CONF_USERNAME, DEFAULT_HOST, DOMAIN, UPDATE_INTERVAL_HOURS
+from .const import CONF_HOST, CONF_PIN, CONF_USERNAME, DEFAULT_HOST, DOMAIN, RETRY_DELAYS_MINUTES, UPDATE_INTERVAL_HOURS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,12 +39,35 @@ class FinnaCoordinator(DataUpdateCoordinator[FinnaData]):
             self.session, entry.data[CONF_USERNAME], entry.data[CONF_PIN], self.host
         )
         self.username: str = entry.data[CONF_USERNAME]
+        self._failures = 0
 
     async def _async_update_data(self) -> FinnaData:
         try:
-            data = await self.client.async_get_data()
+            data = await self._fetch()
+        except UpdateFailed:
+            # The coordinator schedules the next poll from update_interval
+            # after this returns, so set the retry delay before raising.
+            if self._failures < len(RETRY_DELAYS_MINUTES):
+                delay = timedelta(minutes=RETRY_DELAYS_MINUTES[self._failures])
+            else:
+                delay = timedelta(hours=UPDATE_INTERVAL_HOURS)
+            self._failures += 1
+            self.update_interval = delay
+            raise
+        self._failures = 0
+        self.update_interval = timedelta(hours=UPDATE_INTERVAL_HOURS)
+        return data
+
+    async def _fetch(self) -> FinnaData:
+        try:
+            data = await self.client.async_get_data(self.data)
             # Flag saved searches whose hit count grew since the last poll.
-            if self.data is not None:
+            # Skip when the searches were carried over unchanged (issue #4):
+            # comparing them with themselves would zero the counts.
+            if (
+                self.data is not None
+                and data.saved_searches is not self.data.saved_searches
+            ):
                 previous = {
                     (s.url or s.query): s.results for s in self.data.saved_searches
                 }

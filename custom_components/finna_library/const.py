@@ -10,3 +10,6 @@ CONF_USERNAME = "username"
 CONF_PIN = "pin"
 
 UPDATE_INTERVAL_HOURS = 6
+# After a failed poll, retry after these delays before falling back to the
+# normal interval: an overnight Finna slowdown shouldn't cost 6 h (issue #4).
+RETRY_DELAYS_MINUTES = (5, 15, 30)

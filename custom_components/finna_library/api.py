@@ -7,6 +7,7 @@ pure so they can be unit-tested against saved HTML fixtures.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import date
@@ -15,6 +16,8 @@ import aiohttp
 from bs4 import BeautifulSoup
 
 from .const import DEFAULT_HOST, USER_AGENT
+
+_LOGGER = logging.getLogger(__name__)
 
 FINNISH_DATE_RE = re.compile(r"(\d{1,2})\.(\d{1,2})\.(\d{4})")
 
@@ -76,6 +79,7 @@ class FinnaData:
     renew_csrf: str | None = None
     loans_this_year: int | None = None
     history_total: int | None = None
+    history_year: int | None = None  # year loans_this_year was counted for
     saved_searches: list[SavedSearch] = field(default_factory=list)
 
     @property
@@ -347,26 +351,47 @@ class FinnaClient:
     async def async_get_saved_searches(self) -> list[SavedSearch]:
         return parse_saved_searches(await self._get_page("/Search/History"))
 
-    async def async_get_data(self) -> FinnaData:
+    async def async_get_data(self, previous: FinnaData | None = None) -> FinnaData:
+        """Fetch everything; loans and holds must succeed, the rest is optional.
+
+        If an optional page (fines, history, saved searches) fails with a
+        connection error, its previous value is kept and the remaining
+        optional pages are skipped for this poll — the server is likely slow
+        and loans/due dates matter more than a complete poll (issue #4).
+        """
+        previous = previous or FinnaData()
+        year = date.today().year
+        # A count carried over from last year would be wrong, not just stale.
+        carried_count = (
+            previous.loans_this_year if previous.history_year == year else None
+        )
         loans, renew_ids, csrf = parse_checked_out(
             await self._get_page("/MyResearch/CheckedOut")
         )
         holds = parse_holds(await self._get_page("/Holds/List"))
-        fines_total = parse_fines_total(await self._get_page("/MyResearch/Fines"))
-        loans_this_year, history_total = await self.async_count_loans_in_year(
-            date.today().year
-        )
-        saved_searches = await self.async_get_saved_searches()
-        return FinnaData(
-            loans_this_year=loans_this_year,
-            history_total=history_total,
-            saved_searches=saved_searches,
+        data = FinnaData(
             loans=loans,
             holds=holds,
-            fines_total=fines_total,
             renew_all_ids=renew_ids,
             renew_csrf=csrf,
+            fines_total=previous.fines_total,
+            loans_this_year=carried_count,
+            history_total=previous.history_total,
+            history_year=previous.history_year if carried_count is not None else None,
+            saved_searches=previous.saved_searches,
         )
+        try:
+            data.fines_total = parse_fines_total(
+                await self._get_page("/MyResearch/Fines")
+            )
+            data.loans_this_year, data.history_total = (
+                await self.async_count_loans_in_year(year)
+            )
+            data.history_year = year
+            data.saved_searches = await self.async_get_saved_searches()
+        except FinnaConnectionError as err:
+            _LOGGER.warning("Skipping rest of optional Finna pages: %s", err)
+        return data
 
     async def async_renew_all(self) -> tuple[int, int]:
         """Renew all renewable loans; returns (succeeded, failed)."""
