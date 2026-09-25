@@ -28,9 +28,15 @@ async def _press(hass, result: RenewResult):
         entity_id = next(
             s.entity_id for s in hass.states.async_all("button")
         )
-        await hass.services.async_call(
-            "button", "press", {"entity_id": entity_id}, blocking=True
-        )
+        try:
+            await hass.services.async_call(
+                "button", "press", {"entity_id": entity_id}, blocking=True
+            )
+        finally:
+            # Unload before the test ends so no refresh or executor work
+            # outlives it (HA 2024.6's test harness fails on lingering threads).
+            await hass.config_entries.async_unload(entry.entry_id)
+            await hass.async_block_till_done()
 
 
 async def test_press_names_loans_that_were_not_renewed(hass):
