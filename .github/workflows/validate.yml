@@ -42,6 +42,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # 0.13.132 pins homeassistant==2024.6.0; josepy<2 keeps its acme importable.
-      - run: pip install "pytest-homeassistant-custom-component==0.13.132" "josepy<2" beautifulsoup4
+      # 0.13.132 pins homeassistant==2024.6.0. Transitive pins for that era:
+      # josepy<2 keeps acme importable; newer pycares leaves a shutdown
+      # thread that the old test harness reports as lingering.
+      - run: >-
+          pip install "pytest-homeassistant-custom-component==0.13.132"
+          "josepy<2" "aiodns==3.2.0" "pycares==4.4.0" beautifulsoup4
       - run: pytest tests/ -q
