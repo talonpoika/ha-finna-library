@@ -1,0 +1,8 @@
+version: 2
+updates:
+  # CI actions (validate.yml). The integration's own requirement lives in
+  # manifest.json, which Dependabot doesn't read; HA provides bs4 anyway.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
