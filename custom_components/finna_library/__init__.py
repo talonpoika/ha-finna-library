@@ -34,10 +34,9 @@ class FinnaCoordinator(DataUpdateCoordinator[FinnaData]):
         )
         # Own cookie jar per card so multiple accounts don't share a session.
         self.session = async_create_clientsession(hass)
-        session = self.session
         self.host: str = entry.data.get(CONF_HOST, DEFAULT_HOST)
         self.client = FinnaClient(
-            session, entry.data[CONF_USERNAME], entry.data[CONF_PIN], self.host
+            self.session, entry.data[CONF_USERNAME], entry.data[CONF_PIN], self.host
         )
         self.username: str = entry.data[CONF_USERNAME]
 
@@ -99,7 +98,5 @@ async def async_setup_entry(hass: HomeAssistant, entry: FinnaConfigEntry) -> boo
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: FinnaConfigEntry) -> bool:
-    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unloaded:
-        await entry.runtime_data.session.close()
-    return unloaded
+    # The client session is closed by HA itself on unload (issue #3).
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
