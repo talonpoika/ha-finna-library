@@ -196,7 +196,10 @@ def _history_client():
 async def test_unchanged_history_total_reuses_count_after_one_page():
     client = _history_client()
     previous = FinnaData(
-        loans_this_year=99, history_total=5, history_year=date.today().year
+        loans_this_year=99,
+        history_total=5,
+        history_year=date.today().year,
+        history_head=("Uusi kirja", date(2026, 7, 15)),
     )
 
     data = await client.async_get_data(previous)
@@ -267,3 +270,19 @@ async def test_request_duration_is_logged_at_debug(caplog):
         "/Holds/List" in r.getMessage() and "200" in r.getMessage() and "ms" in r.getMessage()
         for r in caplog.records
     )
+
+
+async def test_same_history_total_but_new_head_recounts():
+    # Library purged an old entry while a new loan appeared: total unchanged.
+    client = _history_client()
+    previous = FinnaData(
+        loans_this_year=99,
+        history_total=5,
+        history_year=date.today().year,
+        history_head=("Joku muu kirja", date(2026, 7, 1)),
+    )
+
+    data = await client.async_get_data(previous)
+
+    assert data.loans_this_year != 99
+    assert data.history_head == ("Uusi kirja", date(2026, 7, 15))

@@ -87,6 +87,7 @@ class FinnaData:
     loans_this_year: int | None = None
     history_total: int | None = None
     history_year: int | None = None  # year loans_this_year was counted for
+    history_head: tuple | None = None  # (title, checkout date) of newest entry
     saved_searches: list[SavedSearch] = field(default_factory=list)
 
     @property
@@ -201,6 +202,9 @@ def parse_renew_result(html: str, attempted: set[str]) -> RenewResult:
             result.renewed.append(title)
         elif danger := row.select_one(".status-column .alert-danger"):
             result.failed.append(f"{title}: {danger.get_text(' ', strip=True)}")
+        else:
+            # Sent for renewal but Finna showed no result: don't report success.
+            result.failed.append(f"{title}: no renewal result shown")
     return result
 
 
@@ -364,27 +368,33 @@ class FinnaClient:
         return body
 
     async def async_count_loans_in_year(
-        self, year: int, known: tuple[int, int] | None = None
-    ) -> tuple[int | None, int | None]:
-        """Count history entries checked out in `year`; returns (count, total).
+        self, year: int, known: tuple[int, int, tuple | None] | None = None
+    ) -> tuple[int | None, int | None, tuple | None]:
+        """Count history entries checked out in `year`.
 
-        History is newest-first, so stop as soon as a page only has older
-        entries. Capped at 50 pages as a runaway guard. `known` is a
-        (count, total) already counted for `year`: if page 1 shows the same
-        total, the history hasn't changed and it is returned as is (#5).
+        Returns (count, total, head), head being the newest entry's
+        (title, checkout date). History is newest-first, so stop as soon as
+        a page only has older entries. Capped at 50 pages as a runaway
+        guard. `known` is a (count, total, head) already counted for `year`:
+        if page 1 shows the same total and head, the history hasn't changed
+        and it is returned as is (#5). The head catches a purge of old
+        entries that coincides with new loans and keeps the total unchanged.
         """
         count = 0
         total = None
+        head = None
         prev_first: tuple | None = None
         for page in range(1, 51):
             entries, total = parse_history_page(
                 await self._get_page(f"/Checkouts/History?page={page}")
             )
-            if page == 1 and known is not None and total == known[1]:
-                return known
+            first = (entries[0].title, entries[0].checkout_date) if entries else None
+            if page == 1:
+                head = first
+                if known is not None and (total, head) == known[1:]:
+                    return known
             if not entries:
                 break
-            first = (entries[0].title, entries[0].checkout_date)
             dated = [e for e in entries if e.checkout_date]
             # Stop on a repeated page (some servers clamp page=N past the
             # end) or when no dates parse (layout/language changed) — both
@@ -395,7 +405,7 @@ class FinnaClient:
             count += sum(1 for e in dated if e.checkout_date.year == year)
             if any(e.checkout_date.year < year for e in dated):
                 break
-        return (count if total is not None else None), total
+        return (count if total is not None else None), total, head
 
     async def async_get_saved_searches(self) -> list[SavedSearch]:
         return parse_saved_searches(await self._get_page("/Search/History"))
@@ -415,7 +425,7 @@ class FinnaClient:
             previous.loans_this_year if previous.history_year == year else None
         )
         known = (
-            (carried_count, previous.history_total)
+            (carried_count, previous.history_total, previous.history_head)
             if carried_count is not None and previous.history_total is not None
             else None
         )
@@ -432,13 +442,14 @@ class FinnaClient:
             loans_this_year=carried_count,
             history_total=previous.history_total,
             history_year=previous.history_year if carried_count is not None else None,
+            history_head=previous.history_head,
             saved_searches=previous.saved_searches,
         )
         try:
             data.fines_total = parse_fines_total(
                 await self._get_page("/MyResearch/Fines")
             )
-            data.loans_this_year, data.history_total = (
+            data.loans_this_year, data.history_total, data.history_head = (
                 await self.async_count_loans_in_year(year, known)
             )
             data.history_year = year

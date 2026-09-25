@@ -48,3 +48,20 @@ async def test_press_names_loans_that_were_not_renewed(hass):
 
 async def test_press_all_renewed_does_not_raise(hass):
     await _press(hass, RenewResult(renewed=["Kiikissä"], failed=[]))
+
+
+async def test_renew_with_no_result_shown_is_not_silent_success():
+    from pathlib import Path
+
+    from custom_components.finna_library.api import FinnaClient
+
+    before = (Path(__file__).parent / "fixtures" / "checkedout.html").read_text()
+    client = FinnaClient(session=None, username="u", pin="p")
+    client._get_page = AsyncMock(return_value=before)  # noqa: SLF001
+    # Finna answers with the plain list: no renewal result for the loan.
+    client._post = AsyncMock(return_value=before)  # noqa: SLF001
+
+    result = await client.async_renew_all()
+
+    assert result.renewed == []
+    assert result.failed and "Kiikissä" in result.failed[0]
