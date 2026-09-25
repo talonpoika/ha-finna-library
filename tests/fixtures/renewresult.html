@@ -1,0 +1,41 @@
+<!-- Hand-built fixture: /MyResearch/CheckedOut after a renew-all POST, per
+     upstream finna2 myresearch/checkedout.phtml (renewResult branches).
+     No real account data. -->
+<html><body>
+<form name="renewals" method="post" id="renewals">
+<input type="hidden" name="csrf" value="testcsrf-456">
+<div class="alert alert-danger">Piilotettu laina: Uusinta epäonnistui: Varattu toiselle</div>
+<table class="myresearch-table">
+<tr class="myresearch-row" id="recorddemo.aaaa-1111">
+  <td class="text-left checkbox-col"></td>
+  <td class="checkedout-status-information">
+    <div class="title-column text-left"><h3 class="record-title">Kiikissä</h3></div>
+    <div class="status-column">
+      <strong>Eräpäivä: 30.9.2026</strong>
+      <div class="alert alert-success">Uusinta onnistui</div>
+    </div>
+  </td>
+</tr>
+<tr class="myresearch-row" id="recorddemo.cccc-3333">
+  <td class="text-left checkbox-col"></td>
+  <td class="checkedout-status-information">
+    <div class="title-column text-left"><h3 class="record-title">Varattu kirja</h3></div>
+    <div class="status-column">
+      <strong>Eräpäivä: 1.9.2026</strong>
+      <div class="alert alert-danger">Uusinta epäonnistui: Niteellä on varauksia</div>
+    </div>
+  </td>
+</tr>
+<tr class="myresearch-row" id="recorddemo.bbbb-2222">
+  <td class="text-left checkbox-col"></td>
+  <td class="checkedout-status-information">
+    <div class="title-column text-left"><h3 class="record-title">Ei-uusittava kirja</h3></div>
+    <div class="status-column">
+      <strong>Eräpäivä: 15.7.2026</strong>
+      <div class="alert alert-danger">Myöhässä</div>
+    </div>
+  </td>
+</tr>
+</table>
+</form>
+</body></html>

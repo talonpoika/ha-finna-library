@@ -169,3 +169,18 @@ def test_text_pairs_value_in_span():
     """
     holds = parse_holds(html)
     assert holds[0].pickup_location == "Keskuskirjasto"
+
+
+def test_parse_renew_result():
+    from custom_components.finna_library.api import parse_renew_result
+
+    result = parse_renew_result(
+        fixture("renewresult.html"),
+        attempted={"demo.aaaa-1111", "demo.cccc-3333"},
+    )
+    assert result.renewed == ["Kiikissä"]
+    # The overdue, never-attempted loan is not a failed renewal.
+    assert result.failed == [
+        "Piilotettu laina: Uusinta epäonnistui: Varattu toiselle",
+        "Varattu kirja: Uusinta epäonnistui: Niteellä on varauksia",
+    ]

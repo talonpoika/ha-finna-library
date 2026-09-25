@@ -40,7 +40,7 @@ kirjastokortiltasi.
 | `sensor.*_holds_ready` | Holds ready for pickup |
 | `sensor.*_loans_this_year` | Loans checked out this calendar year (requires loan history enabled in Finna) |
 | `sensor.*_saved_searches` | Saved searches with hit counts; `new_results` attributes flag searches whose hits grew since the last poll |
-| `button.*_renew_all` | Renew all renewable loans |
+| `button.*_renew_all` | Renew all renewable loans; if some could not be renewed, the press fails with their titles and reasons |
 | `calendar.*_due_dates` | All-day events for every due date |
 | `todo.*_loaned_books` | Read-only to-do list of loaned books with due dates — shows the actual titles in the UI |
 

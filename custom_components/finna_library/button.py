@@ -33,13 +33,19 @@ class RenewAllButton(FinnaEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         try:
-            ok, fail = await self.coordinator.client.async_renew_all()
+            result = await self.coordinator.client.async_renew_all()
         except FinnaError as err:
             raise HomeAssistantError(f"Renewing loans failed: {err}") from err
         _LOGGER.info(
-            "Renew all for %s…: %d ok, %d failed",
+            "Renew all for %s…: renewed %s; not renewed %s",
             self.coordinator.username[:5],
-            ok,
-            fail,
+            result.renewed,
+            result.failed,
         )
         await self.coordinator.async_request_refresh()
+        if result.failed:
+            # Raising is what surfaces the outcome in the UI (issue #6).
+            raise HomeAssistantError(
+                f"{len(result.renewed)} renewed, {len(result.failed)} not: "
+                + "; ".join(result.failed)
+            )

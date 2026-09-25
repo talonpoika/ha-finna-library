@@ -71,6 +71,12 @@ class SavedSearch:
 
 
 @dataclass
+class RenewResult:
+    renewed: list[str] = field(default_factory=list)  # titles
+    failed: list[str] = field(default_factory=list)  # "title: reason"
+
+
+@dataclass
 class FinnaData:
     loans: list[Loan] = field(default_factory=list)
     holds: list[Hold] = field(default_factory=list)
@@ -169,6 +175,32 @@ def parse_checked_out(html: str) -> tuple[list[Loan], list[str], str | None]:
     ]
     csrf_el = form.find("input", attrs={"name": "csrf"}) if form else None
     return loans, renew_ids, csrf_el.get("value") if csrf_el else None
+
+
+def parse_renew_result(html: str, attempted: set[str]) -> RenewResult:
+    """Parse the CheckedOut page returned by a renew POST.
+
+    Only rows in `attempted` (record IDs sent for renewal) count: an overdue
+    loan shows the same alert-danger without any renewal attempt. Failures
+    for loans hidden from the table are alerts outside the rows, already
+    prefixed with the title by Finna.
+    """
+    doc = BeautifulSoup(html, "html.parser")
+    result = RenewResult()
+    rows = doc.select("tr.myresearch-row[id^=record]")
+    for alert in doc.select(".alert-danger"):
+        if alert.find_parent("tr") is None:
+            result.failed.append(alert.get_text(" ", strip=True))
+    for row in rows:
+        if row.get("id", "").removeprefix("record") not in attempted:
+            continue
+        title_el = row.select_one("h3.record-title")
+        title = title_el.get_text(" ", strip=True) if title_el else "?"
+        if row.select_one(".status-column .alert-success"):
+            result.renewed.append(title)
+        elif danger := row.select_one(".status-column .alert-danger"):
+            result.failed.append(f"{title}: {danger.get_text(' ', strip=True)}")
+    return result
 
 
 def parse_holds(html: str) -> list[Hold]:
@@ -404,19 +436,17 @@ class FinnaClient:
             _LOGGER.warning("Skipping rest of optional Finna pages: %s", err)
         return data
 
-    async def async_renew_all(self) -> tuple[int, int]:
-        """Renew all renewable loans; returns (succeeded, failed)."""
-        _, renew_ids, csrf = parse_checked_out(
+    async def async_renew_all(self) -> RenewResult:
+        """Renew all renewable loans; returns which were and weren't renewed."""
+        loans, renew_ids, csrf = parse_checked_out(
             await self._get_page("/MyResearch/CheckedOut")
         )
         if not renew_ids or not csrf:
-            return (0, 0)
+            return RenewResult()
         data = [("renewAll", "1"), ("csrf", csrf)]
         data += [("renewAllIDS[]", i) for i in renew_ids]
         body = await self._post("/MyResearch/CheckedOut", data)
         if is_logged_out(body):
             raise FinnaError("session expired during renewal; nothing was renewed")
-        doc = BeautifulSoup(body, "html.parser")
-        ok = len(doc.select(".status-column .alert-success"))
-        fail = len(doc.select(".status-column .alert-danger"))
-        return (ok, fail)
+        attempted = {loan.record_id for loan in loans if loan.renewable}
+        return parse_renew_result(body, attempted)
